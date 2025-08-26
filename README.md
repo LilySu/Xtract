@@ -36,61 +36,40 @@ Xtract is a Python framework designed for extracting structured information from
 
 ## Architecture Overview
 
-```mermaid
-graph TB
-    subgraph "Input Layer"
-        A[Documents] --> B[CSV/DataFrame]
-        B --> C[Chunker]
-    end
-    
-    subgraph "Processing Pipeline"
-        C --> D[Page-based Chunking]
-        D --> E[Signature Detection]
-        E --> F[Content Chunks]
-        
-        F --> G[Entity Factory]
-        G --> H[YAML Configs]
-        H --> I[Extraction Prompts]
-        
-        I --> J[Model Provider]
-        J --> K[LLM Inference]
-        K --> L[Structured Output]
-    end
-    
-    subgraph "Matching Strategy"
-        L --> M[Exact Match Pass]
-        M --> N[Fuzzy Pass 1<br/>90% Threshold]
-        N --> O[Fuzzy Pass 2<br/>70% Threshold]
-        O --> P[Fuzzy Pass 3<br/>50% Threshold]
-    end
-    
-    subgraph "Evaluation System"
-        P --> Q[Rule-based Evals]
-        Q --> R[LLM-based Evals]
-        R --> S[Quality Metrics]
-        
-        subgraph "Evaluation Types"
-            T[Exact Match]
-            U[Semantic Similarity]
-            V[Completeness Check]
-            W[Consistency Check]
-            X[Hallucination Detection]
-            Y[Context Complexity]
-            Z[Relevance Score]
-        end
-    end
-    
-    subgraph "Output"
-        S --> AA[Enhanced DataFrame]
-        AA --> BB[Extraction Results]
-        BB --> CC[Evaluation Scores]
-    end
-    
-    style A fill:#e1f5fe
-    style G fill:#f3e5f5
-    style M fill:#fff3e0
-    style Q fill:#e8f5e8
-    style AA fill:#fce4ec
+```
+Input Layer
+├── Documents → CSV/DataFrame → Chunker
+│
+Processing Pipeline
+├── Page-based Chunking → Signature Detection → Content Chunks
+├── Entity Factory → YAML Configs → Extraction Prompts
+└── Model Provider → LLM Inference → Structured Output
+    ├── OpenAI Integration 
+    ├── Azure OpenAI Support
+    ├── Model Selection & Configuration
+    ├── Temperature & Token Control
+    ├── Batching & Rate Limiting
+    └── Response Parsing & Validation
+│
+Matching Strategy
+├── Exact Match Pass
+├── Fuzzy Pass 1 (90% Threshold)
+├── Fuzzy Pass 2 (70% Threshold)
+└── Fuzzy Pass 3 (50% Threshold)
+│
+Evaluation System
+├── Rule-based Evals → LLM-based Evals → Quality Metrics
+└── Evaluation Types:
+    ├── Exact Match
+    ├── Semantic Similarity
+    ├── Completeness Check
+    ├── Consistency Check
+    ├── Hallucination Detection
+    ├── Context Complexity
+    └── Relevance Score
+│
+Output
+└── Enhanced DataFrame → Extraction Results + Evaluation Scores
 ```
 
 ## Quick Start
@@ -163,6 +142,164 @@ Core dependencies are managed through `requirements.txt`:
 - `pyyaml>=6.0` - YAML configuration parsing
 - `openai>=1.0.0` - OpenAI API integration
 - `python-dotenv>=1.0.0` - Environment variable management
+
+## Data Sources
+
+### Input Data Format
+
+Xtract expects CSV files with the following structure:
+- **path**: Document file path or identifier
+- **paragraphs**: Azure Document Intelligence list of paragraph objects with `text` and `page_number`
+- **tables**: Azure Document Intelligence list of table objects with `text` and `page_number`
+
+Example CSV structure:
+```csv
+path,paragraphs,tables
+doc1.pdf,"[{""text"": ""Contract text here..."", ""page_number"": 1}]","[{""text"": ""Table data..."", ""page_number"": 2}]"
+```
+
+### Output Data Format
+
+The framework returns:
+- **Enhanced DataFrame**: Original data + extraction columns + evaluation scores
+- **Extraction Results**: Dictionary mapping entity names to extracted data lists
+- **Evaluation Metrics**: Quality scores for each extraction
+
+### Generated Output Columns
+
+After processing, the following new columns are added to your DataFrame:
+
+#### Extraction Columns
+For each entity defined in `config/extraction/`, a new column is created:
+- `{entity_name}_extracted` - Contains the extracted data as JSON objects
+  - Example: `contract_type_extracted`, `signing_party_extracted`
+
+#### Evaluation Columns
+For each enabled evaluation metric, columns are created per entity:
+- `{entity_name}_{evaluation_name}` - Contains evaluation scores/results
+  - Examples:
+    - `contract_type_exact_match` - Boolean indicating exact text match
+    - `contract_type_semantic_similarity` - Similarity score (0.0-1.0)
+    - `contract_type_completeness_check` - Completeness assessment
+    - `contract_type_hallucination_detection` - Hallucination detection result
+    - `contract_type_context_complexity` - Context complexity score
+    - `contract_type_relevance_score` - Relevance assessment
+
+#### Example Output Structure
+```python
+# Original columns
+path, paragraphs, tables
+
+# New extraction columns
+contract_type_extracted, signing_party_extracted
+
+# New evaluation columns  
+contract_type_exact_match, contract_type_semantic_similarity
+signing_party_exact_match, signing_party_completeness_check
+```
+
+### Spark Support (Work in Progress)
+
+Xtract includes experimental Spark DataFrame support for processing large-scale document collections:
+- **Databricks Mode**: Configure with `mode: databricks` in settings
+- **Partitioned Processing**: Configurable partition strategy for distributed processing
+- **UDF-based Extraction**: Spark User Defined Functions for entity extraction
+
+## Adding New Entities
+
+### Step 1: Create Entity Configuration
+
+Create a new YAML file in `config/extraction/`:
+
+```yaml
+# config/extraction/new_entity.yaml
+enabled: true
+prompt: |
+  Extract {entity_type} information from the following content.
+  
+  Content: {content}
+  
+  Return a JSON object with the following structure:
+  {format}
+
+context:
+  entity_type: "new_entity"
+  examples: ["example1", "example2"]
+  description: "Description of what to extract"
+
+format:
+  type: "object"
+  properties:
+    text: "string"
+    value: "string"
+    confidence: "string"
+
+evaluations:
+  exact_match: true
+  semantic_similarity: true
+  completeness_check: true
+```
+
+### Step 2: Configure Evaluations
+
+Enable relevant evaluation metrics in your entity config:
+
+```yaml
+evaluations:
+  exact_match: true          # Verify text appears in source
+  semantic_similarity: true  # Measure content similarity
+  completeness_check: true   # Ensure all fields extracted
+  hallucination_detection: true  # Detect fabricated content
+```
+
+### Step 3: Test Your Entity
+
+```bash
+# Run the test suite to verify your entity works
+python tests/run_tests.py
+
+# Test specific entity extraction
+python tests/03_test_entity_extraction.py
+```
+
+### Step 4: Deploy
+
+The entity will be automatically loaded on the next run:
+
+```python
+from xtract.core import Extractor
+
+extractor = Extractor(config_path="config/settings.yaml")
+# Your new entity is now available for extraction
+```
+
+## Environment Configuration
+
+### Example .env File
+
+Create a `.env` file in your project root:
+
+```bash
+# OpenAI Configuration
+OPENAI_API_KEY=sk-your-openai-api-key-here
+OPENAI_MODEL_NAME=gpt-4o-mini
+
+# Azure OpenAI Configuration (Alternative)
+AZURE_OPENAI_API_KEY=your-azure-openai-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# Processing Configuration
+SAMPLE_SIZE=null  # null for all documents, or specify number
+CHUNKING_STRATEGY=page  # page or character
+MAX_CHARS=1000
+OVERLAP=100
+
+# Evaluation Settings
+EVALUATION_ENABLED=true
+RUN_LLM_EVALS=true
+RUN_RULE_EVALS=true
+```
 
 ## Configuration
 
@@ -344,11 +481,6 @@ python tests/05_test_optimizations.py
 # Run with coverage
 python tests/run_tests.py --coverage
 
-# Run with ruff formatting and checking
-python tests/run_tests.py --ruff
-
-# List all test files
-python tests/run_tests.py --list
 ```
 
 **Test Execution Order:**
@@ -413,10 +545,6 @@ evaluations:
 ```bash
 # Install development dependencies
 pip install -e ".[dev]"
-
-# Run linting
-ruff check .
-ruff format .
 
 # Run tests
 python tests/run_tests.py
