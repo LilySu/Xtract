@@ -113,3 +113,57 @@ Source text shorter than extraction: The quick check if len_s < len_e * threshol
 Multiple valid windows: Continues searching even after finding a match to potentially find better matches
 
 This progressive matching pipeline ensures that only validated extractions make it into the final results, maintaining data quality while accommodating the natural variations in LLM outputs. The multi-stage approach with increasing computational cost at each stage optimizes performance for the common case (exact matches) while still handling complex approximate matching when needed.
+
+
+Overall Architecture and Design Philosophy
+Xtract is designed as a configurable document processing pipeline that follows a clear separation of concerns. The framework uses YAML-based configuration to define extraction entities and evaluation metrics, allowing users to add new extraction capabilities without modifying code. The design emphasizes flexibility, performance optimization through caching and batching, and support for both local processing and distributed Spark environments.
+Execution Flow and Component Analysis
+1. Configuration Loading (config_loader.py)
+The execution begins with the configuration system. The load_yaml function reads YAML configuration files and parses them into Python dictionaries. The load_config function serves as a convenience wrapper that loads the main settings file. The _resolve_env_vars function implements environment variable substitution, allowing users to reference environment variables in their configuration files using ${VARIABLE_NAME} syntax. This design choice enables secure configuration management by keeping sensitive information like API keys in environment variables rather than hardcoded in configuration files.
+Input: YAML file path and optional environment variable references
+Output: Resolved configuration dictionary with environment variables substituted
+Purpose: Provides a flexible configuration system that supports both static and dynamic configuration values
+2. Data Input and Parsing (io.py)
+The data ingestion layer handles reading CSV files containing document data. The read_csv function serves as the main entry point, automatically detecting whether to use pandas or Spark based on the specified mode. The read_csv_pandas function reads CSV files using pandas, ensuring required columns exist and parsing JSON-formatted columns for paragraphs and tables. The read_csv_spark function provides Spark DataFrame support for large-scale processing, keeping JSON columns as strings for efficient distributed processing.
+Input: CSV file path and processing mode (local/databricks)
+Output: DataFrame (pandas or Spark) with parsed document structure
+Purpose: Handles the initial data loading and parsing, supporting both local and distributed processing modes
+3. Document Chunking (chunker.py)
+The chunking system processes documents into manageable pieces for extraction. The Chunker class initializes with configuration parameters including strategy (page-based or character-based), maximum character limits, and overlap settings. The chunk method determines the chunking strategy, while _chunk_by_page implements intelligent page-based chunking with signature page detection. This method identifies signature pages using keyword matching and combines them with the first page for context, as signature pages often contain crucial party information that should be processed together with initial definitions.
+Input: List of paragraph and table objects with page numbers
+Output: List of text chunks optimized for extraction
+Purpose: Breaks documents into logical units while preserving context and ensuring signature information is properly grouped
+4. Entity Factory and Configuration (entity_factory.py)
+The entity factory dynamically loads extraction entities from YAML configuration files. The EntityFactory class scans the extraction directory for entity definitions and loads evaluation configurations. Each Entity instance contains prompt templates, context variables, and evaluation settings. The format_prompt method substitutes context variables into prompt templates, allowing for dynamic prompt generation based on the specific entity and content being processed.
+Input: Directory paths for extraction and evaluation configurations
+Output: List of configured Entity objects with their prompts and evaluation settings
+Purpose: Enables users to define new extraction entities through configuration files without code changes
+5. Model Provider and Inference (providers.py)
+The model provider system handles LLM interactions with automatic provider selection. The ModelProvider class determines whether to use the advanced router-based system or simple OpenAI access based on available configuration. The ModelRouter class implements intelligent routing based on model name patterns, automatically selecting appropriate providers (OpenAI, Azure OpenAI) for different model types. The OpenAIProvider and AzureOpenAIProvider classes handle the actual API calls with proper error handling and configuration management.
+Input: Prompt text and optional model overrides
+Output: LLM-generated text responses
+Purpose: Provides a unified interface for different LLM providers while handling authentication, rate limiting, and response processing
+6. Core Extraction Pipeline (extractor.py)
+The main extraction engine orchestrates the entire process. The Extractor class initializes all components and manages the extraction workflow. The extract method determines the processing mode (pandas or Spark) and delegates to appropriate extraction methods. The _process_row method handles individual document processing, implementing intelligent batching when the number of chunks exceeds the configured threshold. The _progressive_match method implements the multi-pass matching strategy, starting with exact matches and progressively relaxing thresholds for fuzzy matching.
+Input: DataFrame with document data and list of entity configurations
+Output: Enhanced DataFrame with extraction results and evaluation scores
+Purpose: Coordinates the entire extraction process, implementing performance optimizations and quality control measures
+7. Progressive Matching and Token Caching
+The extraction system implements sophisticated matching algorithms with performance optimizations. The TokenCache class provides LRU caching for frequently accessed tokenized text, reducing repeated processing overhead. The _progressive_match method implements a three-stage matching strategy: exact text matching, configurable exact-only mode, and progressive fuzzy matching with decreasing thresholds (90%, 70%, 50%). The _token_based_match method uses sliding window optimization and pre-computed token counts for efficient fuzzy matching, only computing expensive SequenceMatcher ratios when necessary.
+Input: Extracted text and source content
+Output: Matched extractions with confidence scores and match types
+Purpose: Ensures high-quality extractions while maintaining performance through intelligent caching and optimization
+8. Evaluation System (evaluator.py)
+The evaluation pipeline assesses extraction quality using both rule-based and LLM-powered metrics. The Evaluator class loads evaluation configurations and determines which evaluations require LLM processing. The evaluate method applies all enabled evaluations to extraction results, creating new columns in the output DataFrame. Rule-based evaluations include exact matching and fuzzy similarity using SequenceMatcher, while LLM-based evaluations handle complex assessments like hallucination detection and completeness checking.
+Input: DataFrame with extractions and evaluation configurations
+Output: DataFrame with additional evaluation score columns
+Purpose: Provides comprehensive quality assessment to validate extraction accuracy and identify potential issues
+9. Output Generation and Persistence
+The final stage handles result formatting and storage. The save_results function automatically detects the DataFrame type and uses appropriate storage methods. For pandas DataFrames, it converts complex objects to JSON strings for CSV compatibility. For Spark DataFrames, it provides multiple storage options including CSV, Parquet, and partitioned storage, with automatic partition management for large datasets.
+Input: Enhanced DataFrame with extractions and evaluations
+Output: Saved results in various formats (CSV, Parquet) with proper structure preservation
+Purpose: Ensures results are stored in accessible formats while maintaining data integrity and supporting different deployment scenarios
+Key Design Choices and Rationale
+The framework's architecture reflects several key design decisions. The YAML-driven configuration system enables rapid prototyping and deployment without code changes, while the modular provider system allows easy integration of new LLM services. The progressive matching strategy balances accuracy with performance, using exact matches when possible and falling back to increasingly relaxed fuzzy matching. The token caching system optimizes repeated operations, while the batching capabilities enable efficient processing of large document collections.
+The dual-mode operation (pandas/Spark) addresses different deployment scenarios, from local development to enterprise-scale processing. The evaluation system provides both immediate feedback through rule-based metrics and sophisticated analysis through LLM-powered assessments. The signature page detection in chunking demonstrates domain-specific optimization for legal documents, where signature pages often contain critical information that should be processed in context.
+Overall, Xtract represents a well-architected framework that balances flexibility, performance, and maintainability while providing enterprise-grade document processing capabilities.
