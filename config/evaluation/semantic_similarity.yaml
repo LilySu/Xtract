@@ -1,0 +1,4 @@
+enabled: true
+method: semantic_similarity
+description: Measures semantic similarity between extraction and source
+threshold: 0.85

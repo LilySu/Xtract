@@ -1,0 +1,18 @@
+enabled: true
+method: relevance_score
+description: Scores extraction relevance to document context
+context: legal contract
+prompt: |
+  Score the relevance of this extraction for a {context}.
+  
+  Source text: {source}
+  Extraction: {extraction}
+  
+  How relevant is this extraction?
+  
+  Output only: "high_relevance", "medium_relevance", or "low_relevance"
+expected_outputs:
+  - high_relevance
+  - medium_relevance
+  - low_relevance
+default_output: low_relevance

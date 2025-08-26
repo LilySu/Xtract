@@ -1,0 +1,15 @@
+
+# Core dependencies
+pandas>=2.0.0
+pyyaml>=6.0.1
+python-dotenv>=1.0.0
+
+# Azure and OpenAI
+openai>=1.12.0
+# azure-identity>=1.15.0
+
+# For Spark/Databricks mode (optional)
+# pyspark>=3.5.0
+
+# Utilities
+typing-extensions>=4.9.0

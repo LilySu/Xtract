@@ -1,0 +1,20 @@
+enabled: true
+method: context_complexity
+description: Evaluates extraction difficulty based on context complexity
+prompt: |
+  Analyze the complexity of extracting information from this context.
+  
+  Source text: {source}
+  Extraction: {extraction}
+  
+  Evaluate based on:
+  1. Ambiguity in the source text
+  2. Multiple possible interpretations
+  3. Technical or domain-specific language
+  4. Nested or conditional information
+  
+  Output only: "high_complexity" or "low_complexity"
+expected_outputs:
+  - high_complexity
+  - low_complexity
+default_output: low_complexity

@@ -1,0 +1,18 @@
+enabled: false
+method: completeness_check
+description: Checks if all relevant entities were extracted
+entity_type: contract_terms
+prompt: |
+  Evaluate if all relevant {entity_type} information was extracted.
+  
+  Source text: {source}
+  Extraction: {extraction}
+  
+  Are all instances of {entity_type} captured?
+  
+  Output only: "complete", "partial", or "incomplete"
+expected_outputs:
+  - complete
+  - partial
+  - incomplete
+default_output: incomplete

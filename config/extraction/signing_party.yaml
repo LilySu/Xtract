@@ -1,0 +1,50 @@
+enabled: true
+model: gpt-4o-mini
+
+# Define what we're extracting as a class with attributes
+extraction_class: signing_party
+description: "Person who signed the document on behalf of a party"
+
+prompt: |
+  Extract individual people who signed the document.
+  Focus on actual human names in signature blocks, not company names.
+  
+  For the following content:
+  {content}
+  
+  Return ONLY valid JSON (no markdown) with this structure:
+  {{
+    "extractions": [
+      {{
+        "person_name": "full name of the person signing",
+        "title": "their job title if mentioned",
+        "representing": "company or party they represent",
+        "role": "internal|external|vendor|client|other"
+      }}
+    ]
+  }}
+  
+  Example: If you see "By: /s/ John Smith, Title: CEO" for TechCorp,
+  extract person_name="John Smith", title="CEO", representing="TechCorp"
+
+context:
+  instruction: "Look for signature blocks with 'By:', 'Name:', 'Signed:', or similar markers"
+  
+format:
+  output: json
+  extraction_class: signing_party
+  attributes:
+    - person_name
+    - title
+    - representing
+    - role
+
+# Evaluations for this extraction class
+evaluations:
+  hallucination_detection: true
+  exact_match: false  # Person names might not match exactly
+  relevance_score: true
+  completeness_check: true
+  context_complexity: true
+  semantic_similarity: true
+  consistency_check: true

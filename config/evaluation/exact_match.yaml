@@ -1,0 +1,3 @@
+enabled: true
+method: exact_match
+description: Checks if extraction exactly matches source text

@@ -1,0 +1,49 @@
+mode: local  # local or databricks
+sample_size: null  # null, 5, 10, 30
+
+# Directory configurations
+extraction_dir: config/extraction
+evaluation_dir: config/evaluation
+
+# Spark/Databricks configuration
+spark:
+  use_partitions: true
+  num_partitions: 200
+
+# Chunking configuration
+chunking:
+  strategy: page  # page or character
+  max_chars: 1000
+  overlap: 100
+  page_grouping: true
+  include_signatures: true  # Combine signature pages with first page
+
+# Extraction configuration
+extraction:
+  matching:
+    exact_only: false
+    fuzzy_passes: 3
+    fuzzy_threshold_1: 0.90  # Very strict first pass
+    fuzzy_threshold_2: 0.70  # Medium second pass  
+    fuzzy_threshold_3: 0.50  # Lenient third pass
+
+# Evaluation configuration
+evaluation:
+  enabled: true
+  run_llm_evals: true
+  run_rule_evals: true
+  max_eval_context: 2000
+
+# Model configuration - Using OpenAI directly
+model:
+  provider: openai
+  model_name: gpt-4o-mini  # Using mini for cost efficiency
+  temperature: 0.0
+  max_tokens: 4096
+  
+  # Batching configuration
+  batching:
+    enabled: false  # Disable for simple testing
+    threshold: 10
+    max_passes: 5
+    batch_size: 20

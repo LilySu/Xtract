@@ -1,0 +1,16 @@
+enabled: true
+method: hallucination_detection
+description: Detects if extraction contains information not in source
+prompt: |
+  Check if the extraction contains information not present in the source.
+  
+  Source text: {source}
+  Extraction: {extraction}
+  
+  Is the extraction faithful to the source text, or does it contain hallucinated information?
+  
+  Output only: "no_hallucination" or "hallucination_detected"
+expected_outputs:
+  - no_hallucination
+  - hallucination_detected
+default_output: no_hallucination

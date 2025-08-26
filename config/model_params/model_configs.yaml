@@ -1,0 +1,25 @@
+# Model routing configuration
+routing:
+  default_provider: openai  # Changed to openai for now
+  priority:  # Order of provider selection
+    - openai
+    - azureopenai
+  
+  patterns:  # Model name patterns to provider mapping
+    "gpt-4o-mini": openai
+    "gpt-4o": openai
+    "gpt-5": openai
+    "o1": openai
+    "o3": openai
+    # Azure patterns (for when you switch back)
+    "gpt-4-azure": azureopenai
+    "gpt-4o-deployment": azureopenai
+
+providers:
+  openai:
+    class: OpenAIProvider
+    config_file: openai.yaml
+    
+  azureopenai:
+    class: AzureOpenAIProvider
+    config_file: azure_openai.yaml

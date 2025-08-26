@@ -1,0 +1,15 @@
+enabled: true
+method: consistency_check
+description: Validates internal consistency of multiple extractions
+prompt: |
+  Check for internal consistency among extractions.
+  
+  Extractions: {extractions}
+  
+  Are there any contradictions or inconsistencies?
+  
+  Output only: "consistent" or "inconsistent"
+expected_outputs:
+  - consistent
+  - inconsistent
+default_output: consistent

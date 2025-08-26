@@ -1,0 +1,66 @@
+{
+  "config": {
+    "mode": "local",
+    "sample_size": null,
+    "chunking_strategy": "page",
+    "matching": {
+      "exact_only": false,
+      "fuzzy_passes": 3,
+      "fuzzy_threshold_1": 0.85,
+      "fuzzy_threshold_2": 0.75,
+      "fuzzy_threshold_3": 0.65
+    }
+  },
+  "results": {
+    "contract_type": {
+      "total_extractions": 3,
+      "documents_with_extraction": 3,
+      "total_documents": 3,
+      "evaluations": {
+        "context_complexity": {
+          "low_complexity": 3
+        },
+        "hallucination_detection": {
+          "no_hallucination": 3
+        },
+        "exact_match": {
+          "matched": 3
+        },
+        "consistency_check": {
+          "consistent": 3
+        },
+        "semantic_similarity": {
+          "no_match": 3
+        },
+        "relevance_score": {
+          "high_relevance": 3
+        }
+      }
+    },
+    "signing_party": {
+      "total_extractions": 3,
+      "documents_with_extraction": 3,
+      "total_documents": 3,
+      "evaluations": {
+        "hallucination_detection": {
+          "no_hallucination": 3
+        },
+        "relevance_score": {
+          "high_relevance": 3
+        },
+        "context_complexity": {
+          "low_complexity": 3
+        },
+        "semantic_similarity": {
+          "no_match": 3
+        },
+        "consistency_check": {
+          "consistent": 3
+        },
+        "exact_match": {
+          "no_match": 3
+        }
+      }
+    }
+  }
+}

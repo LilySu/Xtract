@@ -1,0 +1,38 @@
+enabled: true
+model: gpt-4o-mini  # Using mini for cost efficiency
+
+prompt: |
+  Extract the contract type from the following content:
+  {content}
+  
+  Return ONLY valid JSON (no markdown formatting, no code blocks) with this structure:
+  {{
+    "text": "extracted contract type text exactly as it appears",
+    "value": "MSA|NDA|SOW|Amendment|Other",
+    "confidence": "high|medium|low"
+  }}
+  
+  Confidence levels:
+  - high: Contract type is explicitly stated
+  - medium: Contract type can be inferred from context
+  - low: Contract type is unclear or ambiguous
+
+context:
+  instruction: "Focus on headers and first paragraph"
+  
+format:
+  output: json
+  fields:
+    - text
+    - value
+    - confidence
+
+# Enable/disable specific evaluations for this entity
+evaluations:
+  context_complexity: true
+  hallucination_detection: true
+  exact_match: true
+  consistency_check: true
+  semantic_similarity: true
+  relevance_score: true
+  completeness_check: false
