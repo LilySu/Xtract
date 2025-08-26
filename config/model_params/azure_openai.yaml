@@ -1,24 +1,72 @@
-provider: azureopenai
-endpoint: ${AZURE_OPENAI_ENDPOINT}
-api_key: ${AZURE_OPENAI_KEY}
-api_version: "2024-10-21"
+# config/model_params/model_configs.yaml
+# Main model routing configuration
+routing:
+  default_provider: openai  # Can be changed to azure_openai when needed
+  patterns:
+    gpt: openai
+    o1: openai
+    o3: openai
+    azure: azure_openai
+    # Add more patterns as needed
+
+providers:
+  openai:
+    class: OpenAIProvider
+    config_file: openai.yaml
+  azure_openai:
+    class: AzureOpenAIProvider
+    config_file: azure_openai.yaml
+
+---
+# config/model_params/openai.yaml
+# OpenAI configuration
+api_key: ${OPENAI_API_KEY}  # Will read from environment variable
 
 models:
-  gpt-4o:
-    deployment: gpt-4o-deployment
+  gpt-4o-mini:
     temperature: 0.0
     max_tokens: 4096
-    top_p: 1.0
-    frequency_penalty: 0
-    presence_penalty: 0
-    
-  gpt-4o-mini:
-    deployment: gpt-4o-mini-deployment
+  gpt-4o:
     temperature: 0.0
-    max_tokens: 2048
-    
+    max_tokens: 4096
+  gpt-4-turbo:
+    temperature: 0.0
+    max_tokens: 4096
+  o1-preview:
+    reasoning_effort: medium
+    max_tokens: 8192
+  o3-mini:
+    reasoning_strategy: adaptive
+    reasoning_depth: standard
+    max_tokens: 65536
+
 batch:
-  threshold: 100
+  enabled: false
   size: 20
-  max_retries: 3
-  retry_delay: 1
+  max_passes: 5
+
+---
+# config/model_params/azure_openai.yaml
+# Azure OpenAI configuration
+endpoint: ${AZURE_OPENAI_ENDPOINT}  # e.g., https://myresource.openai.azure.com/
+api_key: ${AZURE_OPENAI_API_KEY}
+api_version: "2024-10-21"  # Check Azure docs for latest version
+
+models:
+  gpt-4o-mini:
+    deployment: gpt-4o-mini-deployment  # Your Azure deployment name
+    temperature: 0.0
+    max_tokens: 4096
+  gpt-4o:
+    deployment: gpt-4o-deployment  # Your Azure deployment name
+    temperature: 0.0
+    max_tokens: 4096
+  gpt-35-turbo:
+    deployment: gpt-35-turbo-deployment
+    temperature: 0.0
+    max_tokens: 4096
+
+batch:
+  enabled: false
+  size: 20
+  max_passes: 5

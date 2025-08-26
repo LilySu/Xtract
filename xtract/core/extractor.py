@@ -6,6 +6,16 @@ from functools import lru_cache
 import collections
 from collections import deque
 
+# Conditional imports for Spark
+try:
+    from pyspark.sql import DataFrame as SparkDataFrame
+    from pyspark.sql.functions import udf, col
+    from pyspark.sql.types import StringType
+    SPARK_AVAILABLE = True
+except ImportError:
+    SparkDataFrame = None
+    SPARK_AVAILABLE = False
+
 from ..factory.entity_factory import EntityFactory
 from ..models.providers import ModelProvider
 from ..utils.config_loader import load_config
@@ -45,7 +55,13 @@ class TokenCache:
 class Extractor:
     def __init__(self, config_path: str = "config/settings.yaml"):
         self.config = load_config(config_path)
-        self.mode = self.config["mode"]
+        self.mode = self.config.get("mode", "local")
+        
+        # Check if Spark is available when databricks mode is selected
+        if self.mode == "databricks" and not SPARK_AVAILABLE:
+            print("Warning: Databricks mode selected but PySpark not available. Falling back to local mode.")
+            self.mode = "local"
+            
         self.entity_factory = EntityFactory(
             extraction_dir=self.config.get("extraction_dir", "config/extraction"),
             evaluation_dir=self.config.get("evaluation_dir", "config/evaluation"),
@@ -59,9 +75,7 @@ class Extractor:
         # Initialize token cache
         self.token_cache = TokenCache(max_size=100)
 
-    def extract(
-        self, df: Union[pd.DataFrame, "SparkDF"]
-    ) -> Tuple[Union[pd.DataFrame, "SparkDF"], Dict]:
+    def extract(self, df: Union[pd.DataFrame, Any]) -> Tuple[Union[pd.DataFrame, Any], Dict]:
         """Extract entities from dataframe"""
         # Sample if configured
         sample_size = self.config.get("sample_size")
@@ -70,13 +84,17 @@ class Extractor:
 
         entities = self.entity_factory.get_entities()
 
-        if self.mode == "databricks":
-            return self._extract_spark(df, entities)
-        return self._extract_pandas(df, entities)
+        if self.mode == "databricks" and SPARK_AVAILABLE:
+            # Check if it's actually a Spark DataFrame
+            if hasattr(df, 'toPandas'):
+                return self._extract_spark(df, entities)
+            else:
+                print("Warning: Databricks mode selected but received pandas DataFrame. Using pandas extraction.")
+                return self._extract_pandas(df, entities)
+        else:
+            return self._extract_pandas(df, entities)
 
-    def _extract_pandas(
-        self, df: pd.DataFrame, entities: list
-    ) -> Tuple[pd.DataFrame, Dict]:
+    def _extract_pandas(self, df: pd.DataFrame, entities: list) -> Tuple[pd.DataFrame, Dict]:
         """Extract using pandas"""
         extraction_results = {}
 
@@ -99,11 +117,11 @@ class Extractor:
 
         return df, extraction_results
 
-    def _extract_spark(self, df: "SparkDF", entities: list) -> Tuple["SparkDF", Dict]:
+    def _extract_spark(self, df: Any, entities: list) -> Tuple[Any, Dict]:
         """Extract using Spark DataFrame"""
-        from pyspark.sql.functions import udf, col
-        from pyspark.sql.types import StringType
-
+        if not SPARK_AVAILABLE:
+            raise RuntimeError("PySpark not available but Spark extraction was called")
+            
         # Configure partitions
         spark_config = self.config.get("spark", {})
         if spark_config.get("use_partitions", True):
@@ -121,12 +139,25 @@ class Extractor:
 
             extract_udf = udf(extract_entity, StringType())
             col_name = f"{entity.name}_extracted"
-            df = df.withColumn(col_name, extract_udf(col("paragraphs"), col("tables")))
+            
+            # Check if required columns exist
+            if "paragraphs" in df.columns and "tables" in df.columns:
+                df = df.withColumn(col_name, extract_udf(col("paragraphs"), col("tables")))
+            elif "paragraphs" in df.columns:
+                # Handle case where tables column doesn't exist
+                df = df.withColumn(col_name, extract_udf(col("paragraphs"), col("paragraphs").cast("null")))
+            else:
+                print(f"Warning: Required columns not found for entity {entity.name}")
+                continue
 
-            # Collect results for summary
-            extraction_results[entity.name] = (
-                df.select(col_name).rdd.map(lambda x: x[0]).collect()
-            )
+            # Collect results for summary (be careful with large datasets)
+            try:
+                extraction_results[entity.name] = (
+                    df.select(col_name).rdd.map(lambda x: x[0]).take(100)  # Limit to 100 for safety
+                )
+            except Exception as e:
+                print(f"Warning: Could not collect results for {entity.name}: {e}")
+                extraction_results[entity.name] = []
 
             # Run evaluations if enabled
             if self.config.get("evaluation", {}).get("enabled", True):
@@ -135,18 +166,14 @@ class Extractor:
                     eval_col = f"{entity.name}_{eval_name}"
 
                     def evaluate(extraction_json, paragraphs):
-                        extractions = (
-                            json.loads(extraction_json) if extraction_json else []
-                        )
+                        extractions = json.loads(extraction_json) if extraction_json else []
                         row = {"paragraphs": paragraphs}
                         return self.evaluator._evaluate_extraction(
                             row, extractions, eval_config, entity.name
                         )
 
                     eval_udf = udf(evaluate, StringType())
-                    df = df.withColumn(
-                        eval_col, eval_udf(col(col_name), col("paragraphs"))
-                    )
+                    df = df.withColumn(eval_col, eval_udf(col(col_name), col("paragraphs")))
 
         return df, extraction_results
 
@@ -154,6 +181,20 @@ class Extractor:
         """Process a single row"""
         paragraphs = row.get("paragraphs", [])
         tables = row.get("tables")
+
+        # Handle case where paragraphs might be a string (JSON)
+        if isinstance(paragraphs, str):
+            try:
+                paragraphs = json.loads(paragraphs)
+            except json.JSONDecodeError:
+                paragraphs = []
+
+        # Handle case where tables might be a string (JSON)
+        if isinstance(tables, str):
+            try:
+                tables = json.loads(tables)
+            except json.JSONDecodeError:
+                tables = None
 
         # Chunk content
         chunks = self.chunker.chunk(paragraphs, tables)
@@ -169,9 +210,7 @@ class Extractor:
         if use_batch:
             # Batch processing
             prompts = [entity.format_prompt(chunk) for chunk in chunks]
-            responses = self.model.batch_infer(
-                prompts, model_name=entity.model_override
-            )
+            responses = self.model.batch_infer(prompts, model_name=entity.model_override)
 
             for response, chunk in zip(responses, chunks):
                 extraction = self._parse_response(response)
@@ -350,10 +389,11 @@ class Extractor:
 
         return best_ratio
 
-    def _sample(
-        self, df: Union[pd.DataFrame, "SparkDF"], size: int
-    ) -> Union[pd.DataFrame, "SparkDF"]:
+    def _sample(self, df: Union[pd.DataFrame, Any], size: int) -> Union[pd.DataFrame, Any]:
         """Sample dataframe"""
         if isinstance(df, pd.DataFrame):
             return df.head(size)
-        return df.limit(size)
+        elif SPARK_AVAILABLE and hasattr(df, 'limit'):
+            return df.limit(size)
+        else:
+            return df

@@ -34,23 +34,27 @@ class AzureOpenAIProvider(BaseProvider):
 
     def __init__(self, model_name: str, config: Dict[str, Any]):
         super().__init__(model_name, config)
-        try:
-            from openai import AzureOpenAI
-
-            self.client = AzureOpenAI(
-                azure_endpoint=config.get("endpoint", ""),
-                api_key=config.get("api_key", ""),
-                api_version=config.get("api_version", "2024-10-21"),
-            )
-        except ImportError:
-            raise ImportError(
-                "Azure OpenAI is not available. Please install openai package or use OpenAI provider instead."
-            )
+        self.client = None
+        
+        # Only initialize if we have the required config
+        if config.get("endpoint") and config.get("api_key"):
+            try:
+                from openai import AzureOpenAI
+                self.client = AzureOpenAI(
+                    azure_endpoint=config.get("endpoint"),
+                    api_key=config.get("api_key"),
+                    api_version=config.get("api_version", "2024-10-21"),
+                )
+            except ImportError:
+                print("Warning: Azure OpenAI package not available. Install with: pip install openai")
+                self.client = None
 
     def infer(self, prompt: str, **kwargs) -> str:
+        if not self.client:
+            raise RuntimeError("Azure OpenAI client not initialized. Check configuration.")
+            
         deployment = self.model_config.get("deployment", self.model_name)
 
-        # Build params without spreading model_config directly
         params = {
             "model": deployment,
             "messages": [{"role": "user", "content": prompt}],
@@ -68,17 +72,15 @@ class OpenAIProvider(BaseProvider):
 
     def __init__(self, model_name: str, config: Dict[str, Any]):
         super().__init__(model_name, config)
+        self.client = None
+        
         try:
             from openai import OpenAI
             import os
 
             # Get API key from config or environment
             api_key = config.get("api_key")
-            if (
-                isinstance(api_key, str)
-                and api_key.startswith("${")
-                and api_key.endswith("}")
-            ):
+            if isinstance(api_key, str) and api_key.startswith("${") and api_key.endswith("}"):
                 env_var = api_key[2:-1]
                 api_key = os.getenv(env_var)
 
@@ -86,14 +88,19 @@ class OpenAIProvider(BaseProvider):
             if not api_key:
                 api_key = os.getenv("OPENAI_API_KEY")
 
-            self.client = OpenAI(api_key=api_key)
+            if api_key:
+                self.client = OpenAI(api_key=api_key)
+            else:
+                print("Warning: No OpenAI API key found in config or environment")
+                
         except ImportError:
-            raise ImportError(
-                "OpenAI package not installed. Please run: pip install openai"
-            )
+            print("Warning: OpenAI package not installed. Please run: pip install openai")
+            self.client = None
 
     def infer(self, prompt: str, **kwargs) -> str:
-        # Build params carefully - only include valid OpenAI parameters
+        if not self.client:
+            raise RuntimeError("OpenAI client not initialized. Check API key configuration.")
+            
         params = {
             "model": self.model_name,
             "messages": [{"role": "user", "content": prompt}],
@@ -102,26 +109,16 @@ class OpenAIProvider(BaseProvider):
         }
 
         # Add optional parameters if they exist
-        if "top_p" in self.model_config:
-            params["top_p"] = self.model_config["top_p"]
-        if "frequency_penalty" in self.model_config:
-            params["frequency_penalty"] = self.model_config["frequency_penalty"]
-        if "presence_penalty" in self.model_config:
-            params["presence_penalty"] = self.model_config["presence_penalty"]
+        optional_params = ["top_p", "frequency_penalty", "presence_penalty",
+                          "reasoning_effort", "reasoning_strategy", "reasoning_depth"]
+        
+        for param in optional_params:
+            if param in self.model_config:
+                params[param] = self.model_config[param]
 
-        # Handle special parameters for advanced models
-        if "reasoning_effort" in self.model_config:
-            params["reasoning_effort"] = self.model_config["reasoning_effort"]
-        if "reasoning_strategy" in self.model_config:
-            params["reasoning_strategy"] = self.model_config["reasoning_strategy"]
-        if "reasoning_depth" in self.model_config:
-            params["reasoning_depth"] = self.model_config["reasoning_depth"]
-
-        # Add any additional kwargs that are valid
+        # Add any additional kwargs that are valid (excluding Azure-specific params)
         for key, value in kwargs.items():
-            if key not in params and key not in [
-                "deployment"
-            ]:  # Filter out Azure-specific params
+            if key not in params and key != "deployment":
                 params[key] = value
 
         response = self.client.chat.completions.create(**params)
@@ -132,19 +129,29 @@ class SimpleModelProvider:
     """Simplified provider that uses OpenAI by default"""
 
     def __init__(self, config: Optional[Dict] = None):
-        import os
-        from openai import OpenAI
-
         self.config = config or {}
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("Please set OPENAI_API_KEY environment variable")
+        self.client = None
+        
+        try:
+            import os
+            from openai import OpenAI
 
-        self.client = OpenAI(api_key=api_key)
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                self.client = OpenAI(api_key=api_key)
+            else:
+                print("Warning: OPENAI_API_KEY environment variable not set")
+                
+        except ImportError:
+            print("Warning: OpenAI package not installed")
+            
         self.model_name = self.config.get("model_name", "gpt-4o-mini")
 
     def infer(self, prompt: str, model_name: Optional[str] = None, **kwargs) -> str:
         """Simple inference using OpenAI"""
+        if not self.client:
+            raise RuntimeError("OpenAI client not initialized. Check OPENAI_API_KEY environment variable.")
+            
         model = model_name or self.model_name
 
         response = self.client.chat.completions.create(
@@ -155,9 +162,7 @@ class SimpleModelProvider:
         )
         return response.choices[0].message.content
 
-    def batch_infer(
-        self, prompts: List[str], model_name: Optional[str] = None
-    ) -> List[str]:
+    def batch_infer(self, prompts: List[str], model_name: Optional[str] = None) -> List[str]:
         """Batch inference"""
         return [self.infer(p, model_name) for p in prompts]
 
@@ -168,39 +173,44 @@ class ModelRouter:
     def __init__(self, config_dir: str = "config/model_params"):
         self.config_dir = Path(config_dir)
         self.providers = {}
+        self.main_config = self._load_main_config()
+        
+        if self.config_dir.exists():
+            self._load_providers()
 
-        # Check if config directory exists
+    def _load_main_config(self) -> Dict:
+        """Load main configuration with proper defaults"""
         if self.config_dir.exists():
             config_file = self.config_dir / "model_configs.yaml"
             if config_file.exists():
-                self.main_config = load_yaml(config_file)
-                self._load_providers()
-            else:
-                # Default configuration
-                self.main_config = {
-                    "routing": {
-                        "default_provider": "openai",
-                        "patterns": {"gpt": "openai", "o1": "openai", "o3": "openai"},
-                    },
-                    "providers": {
-                        "openai": {
-                            "class": "OpenAIProvider",
-                            "config_file": "openai.yaml",
-                        }
-                    },
+                return load_yaml(config_file)
+                
+        # Default configuration
+        return {
+            "routing": {
+                "default_provider": "openai",
+                "patterns": {
+                    "gpt": "openai",
+                    "o1": "openai", 
+                    "o3": "openai",
+                    "azure": "azure_openai"
+                },
+            },
+            "providers": {
+                "openai": {
+                    "class": "OpenAIProvider",
+                    "config_file": "openai.yaml",
+                },
+                "azure_openai": {
+                    "class": "AzureOpenAIProvider", 
+                    "config_file": "azure_openai.yaml",
                 }
-        else:
-            # Minimal default config
-            self.main_config = {
-                "routing": {"default_provider": "openai", "patterns": {}},
-                "providers": {},
-            }
+            },
+        }
 
     def _load_providers(self):
         """Load all provider configurations."""
-        for provider_name, provider_info in self.main_config.get(
-            "providers", {}
-        ).items():
+        for provider_name, provider_info in self.main_config.get("providers", {}).items():
             config_file = self.config_dir / provider_info["config_file"]
             if config_file.exists():
                 self.providers[provider_name] = {
@@ -215,7 +225,7 @@ class ModelRouter:
         provider_name = None
 
         for pattern, provider in patterns.items():
-            if pattern in model_name:
+            if pattern in model_name.lower():
                 provider_name = provider
                 break
 
@@ -254,23 +264,34 @@ class ModelProvider:
 
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
+        self.simple_mode = False
+        self.provider = None
+        self.router = None
 
-        # Check if we should use simple mode based on settings
+        # Determine which mode to use
         provider_type = self.config.get("provider", "").lower()
-
-        # For simple OpenAI setup, use SimpleModelProvider
-        if provider_type == "openai" and not Path("config/model_params").exists():
-            self.simple_mode = True
-            self.provider = SimpleModelProvider(config)
-        # If model_params directory exists, use the router
-        elif Path("config/model_params").exists():
+        
+        # Check if model_params directory exists and has configs
+        model_params_path = Path("config/model_params")
+        use_router = False
+        
+        if model_params_path.exists():
+            # Check if there are actual config files
+            config_file = model_params_path / "model_configs.yaml"
+            if config_file.exists():
+                use_router = True
+        
+        # Use router if we have config directory, otherwise use simple mode
+        if use_router:
             self.simple_mode = False
             self.router = ModelRouter()
             # Override default provider if specified in settings
-            if provider_type:
+            if provider_type == "azure_openai":
+                self.router.main_config["routing"]["default_provider"] = "azure_openai"
+            elif provider_type:
                 self.router.main_config["routing"]["default_provider"] = provider_type
         else:
-            # Fallback to simple mode
+            # Use simple mode for direct OpenAI access
             self.simple_mode = True
             self.provider = SimpleModelProvider(config)
 
@@ -283,9 +304,7 @@ class ModelProvider:
             provider = self.router.get_provider(model)
             return provider.infer(prompt, **kwargs)
 
-    def batch_infer(
-        self, prompts: List[str], model_name: Optional[str] = None
-    ) -> List[str]:
+    def batch_infer(self, prompts: List[str], model_name: Optional[str] = None) -> List[str]:
         """Batch inference"""
         if self.simple_mode:
             return self.provider.batch_infer(prompts, model_name)
