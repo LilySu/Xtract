@@ -1,14 +1,16 @@
 import os
 import yaml
-from pathlib import Path
+
 
 def load_yaml(path):
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         config = yaml.safe_load(f)
     return _resolve_env_vars(config)
 
+
 def load_config(path="config/settings.yaml"):
     return load_yaml(path)
+
 
 def _resolve_env_vars(config):
     if isinstance(config, dict):

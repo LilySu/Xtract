@@ -2,6 +2,7 @@
 """
 Debug why signing party extraction is empty
 """
+
 import sys
 import json
 from pathlib import Path
@@ -26,25 +27,25 @@ config = load_yaml("config/settings.yaml")
 
 # Chunk the content
 chunker = Chunker("config/settings.yaml")
-chunks = chunker.chunk(test_row['paragraphs'], test_row.get('tables'))
+chunks = chunker.chunk(test_row["paragraphs"], test_row.get("tables"))
 
-print(f"\nChunk content:")
+print("\nChunk content:")
 print(chunks[0][:500] + "...")
 
 # Load signing party config
 signing_config = load_yaml("config/extraction/signing_party.yaml")
-prompt_template = signing_config.get('prompt', '')
+prompt_template = signing_config.get("prompt", "")
 prompt = prompt_template.format(content=chunks[0])
 
-print(f"\nPrompt being sent:")
+print("\nPrompt being sent:")
 print(prompt[:600] + "...")
 
 # Test model inference
 model = ModelProvider(config.get("model"))
-print(f"\nCalling model...")
+print("\nCalling model...")
 response = model.infer(prompt, model_name="gpt-4o-mini")
 
-print(f"\nRaw response:")
+print("\nRaw response:")
 print(response)
 
 # Parse response
@@ -59,9 +60,9 @@ response = response.strip()
 
 try:
     parsed = json.loads(response)
-    print(f"\nParsed response:")
+    print("\nParsed response:")
     print(json.dumps(parsed, indent=2))
-    
+
     # Check if text field exists
     if "text" in parsed:
         print(f"\n✓ Text field: {parsed['text']}")
@@ -70,10 +71,12 @@ try:
         party_names = [p.get("party_name", "") for p in parsed["parties"]]
         text = ", ".join(party_names)
         print(f"\n✓ Created text from parties: {text}")
-        
+
     # Check matching
     if "text" in parsed or "parties" in parsed:
-        text_to_match = parsed.get("text", "") or ", ".join([p.get("party_name", "") for p in parsed.get("parties", [])])
+        text_to_match = parsed.get("text", "") or ", ".join(
+            [p.get("party_name", "") for p in parsed.get("parties", [])]
+        )
         print(f"\nChecking if '{text_to_match}' is in chunk...")
         if text_to_match in chunks[0]:
             print("✓ Would match exactly")
@@ -81,11 +84,15 @@ try:
             print("✗ No exact match")
             # Check what parties are actually in the text
             import re
+
             print("\nLooking for company names in chunk:")
-            companies = re.findall(r"([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)*(?:,? (?:Inc\.|LLC|Corp\.|Corporation|Ltd\.|Company))?)", chunks[0])
+            companies = re.findall(
+                r"([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)*(?:,? (?:Inc\.|LLC|Corp\.|Corporation|Ltd\.|Company))?)",
+                chunks[0],
+            )
             for company in companies[:5]:
                 print(f"  - Found: {company}")
-                
+
 except json.JSONDecodeError as e:
     print(f"\n✗ Failed to parse JSON: {e}")
 

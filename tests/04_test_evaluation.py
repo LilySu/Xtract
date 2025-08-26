@@ -2,6 +2,7 @@
 """
 Test evaluation integration
 """
+
 import sys
 import json
 from pathlib import Path
@@ -23,7 +24,7 @@ print("=" * 50)
 # Load entity factory
 factory = EntityFactory(
     extraction_dir=str(Path(__file__).parent.parent / "config" / "extraction"),
-    evaluation_dir=str(Path(__file__).parent.parent / "config" / "evaluation")
+    evaluation_dir=str(Path(__file__).parent.parent / "config" / "evaluation"),
 )
 
 # Check what evaluations are loaded
@@ -36,7 +37,7 @@ print("\nEntity configurations:")
 for entity in factory.get_entities():
     print(f"\n{entity.name}:")
     print(f"  Model: {entity.model_override or 'default'}")
-    print(f"  Active evaluations:")
+    print("  Active evaluations:")
     active_evals = entity.get_active_evaluations()
     for eval_name, eval_config in active_evals.items():
         print(f"    - {eval_name}: {eval_config.get('method')}")
@@ -55,6 +56,7 @@ extractor = Extractor(str(Path(__file__).parent.parent / "config" / "settings.ya
 
 # Process just one row
 import pandas as pd
+
 test_df = pd.DataFrame([test_row])
 
 # Extract
@@ -63,12 +65,14 @@ result_df, extraction_results = extractor.extract(test_df)
 # Check columns created
 print("\nColumns created:")
 for col in result_df.columns:
-    if col not in ['path', 'paragraphs', 'tables']:
+    if col not in ["path", "paragraphs", "tables"]:
         print(f"  - {col}")
         # Show the value
         value = result_df[col].iloc[0]
         if isinstance(value, list) and value:
-            print(f"    Value: {value[0] if len(value) == 1 else f'{len(value)} items'}")
+            print(
+                f"    Value: {value[0] if len(value) == 1 else f'{len(value)} items'}"
+            )
         else:
             print(f"    Value: {value}")
 
@@ -83,16 +87,16 @@ for entity_name, results in extraction_results.items():
         if isinstance(results[0], list) and results[0]:
             extracted = results[0][0]
             print(f"  Extracted: {json.dumps(extracted, indent=2)}")
-            
+
             # Check confidence field
-            if 'confidence' in extracted:
-                conf = extracted['confidence']
-                if conf in ['high', 'medium', 'low']:
+            if "confidence" in extracted:
+                conf = extracted["confidence"]
+                if conf in ["high", "medium", "low"]:
                     print(f"  ✓ Confidence is categorical: {conf}")
                 else:
                     print(f"  ✗ Confidence should be categorical, got: {conf}")
         else:
-            print(f"  No extraction")
+            print("  No extraction")
 
 print("\n" + "=" * 50)
 print("Test complete")
